@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\EmailsJob;
 use App\Repositories\EmailsRepository;
+use App\Repositories\JobsRepository;
 
 class EmailsService
 {
@@ -19,24 +20,40 @@ class EmailsService
             return $response;
         }
     }
-
+    
     public function recuperar()
     {
         try {
             $emailsRepository = new EmailsRepository();
-            $dados = $emailsRepository->buscar();
+            $emails = $emailsRepository->buscar();
 
-            $emails = [];
+            $jobsRepository = new JobsRepository();
+            $jobs = $jobsRepository->buscar();
 
-            foreach ($dados as $dado) {
-                $emails[] = [
-                    'id' => $dado->id,
-                    'dados' => $this->decodificar($dado->payload),
-                    'status' => $dado->defineStatus()
+
+            $emailsFormatados = [];
+            $jobsFormatados = [];
+
+            foreach ($emails as $dado) {
+                $emailsFormatados[] = [
+                    'id' => base64_encode($dado->id . now()),
+                    'dados' => $this->decodificar($dado->payload, 1),
+                    'status' => $dado->defineStatus(),
+                    'data_hora' => date('d/m/Y H:i:s', strtotime($dado->created_at))
                 ];
             }
 
-            $response = ["cod" => 111, "dados" => $emails];
+            foreach ($jobs as $dado) {
+                $jobsFormatados[] = [
+                    'id' => base64_encode($dado->id . now()),
+                    'dados' => $this->decodificar($dado->payload, 0),
+                    'status' => "Em fila",
+                    'data_hora' => date('d/m/Y H:i:s', strtotime($dado->created_at))
+                ];
+            }
+
+            $dados = array_merge($emailsFormatados, $jobsFormatados);
+            $response = ["cod" => 111, "dados" => $dados];
         } catch (\Throwable $th) {
             $response = ["cod" => 333, "response" => $th->getMessage()];
         } finally {
@@ -44,8 +61,9 @@ class EmailsService
         }
     }
 
-    private function decodificar($payload)
+    private function decodificar($payload, $type)
     {
+        $payload = $type == 1 ? $payload : json_decode($payload)->data->command;
         return unserialize($payload)->recuperarDados();
     }
 }
